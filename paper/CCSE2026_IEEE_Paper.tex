@@ -29,7 +29,7 @@
 \maketitle
 
 \begin{abstract}
-Retail sales forecasting is a central operational challenge, yet high-performing machine learning models rarely explain what drives a given prediction. This paper compares Linear Regression, Random Forest, and XGBoost on the Rossmann Store Sales dataset — 1,017,209 daily sales records from 1,115 German drugstores (2013--2015) — and applies TreeSHAP to both ensemble models for post-hoc explainability. After preprocessing and feature engineering yielding 24 input features, models are evaluated on a held-out set of 168,868 samples. XGBoost achieved the best results: MAE~=~\euro854.15, RMSE~=~\euro1,198.13, $R^{2}$~=~0.8512, and MAPE~=~13.78\%, outperforming Linear Regression by 57.6\% and Random Forest by 17.4\% on MAE. TreeSHAP identified competition proximity (mean $|\text{SHAP}|$~=~0.193), promotional activity (0.182), and store identity (0.167) as the dominant sales drivers. A store-level waterfall explanation for Store~161 demonstrates that SHAP attributions are directly interpretable by non-technical users. All results are evaluated on an 80/20 random held-out split within the 2013--2015 period; the study measures in-sample generalisation, not temporal out-of-sample forecasting.
+Retail sales prediction is a central operational challenge, yet high-performing machine learning models rarely explain what drives a given prediction. This paper compares Linear Regression, Random Forest, and XGBoost on the Rossmann Store Sales dataset — 1,017,209 daily sales records from 1,115 German drugstores (2013--2015) — and applies TreeSHAP to both ensemble models for post-hoc explainability. After preprocessing and feature engineering yielding 24 input features, models are evaluated on a held-out set of 168,868 samples. XGBoost achieved the best results: MAE~=~\euro854.15, RMSE~=~\euro1,198.13, $R^{2}$~=~0.8512, and MAPE~=~13.78\%, outperforming Linear Regression by 57.6\% and Random Forest by 17.4\% on MAE. TreeSHAP identified competition proximity (mean $|\text{SHAP}|$~=~0.193), promotional activity (0.182), and store identity (0.167) as the dominant sales drivers. A store-level waterfall explanation for Store~161 demonstrates that SHAP attributions are directly interpretable by non-technical users. All results are evaluated on an 80/20 random held-out split within the 2013--2015 period; the study measures in-sample generalisation, not temporal out-of-sample forecasting.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -40,9 +40,9 @@ retail sales prediction, explainable AI, SHAP, XGBoost, Random Forest, Rossmann 
 \section{Introduction}
 % -------------------------------------------------------
 
-Managing inventory, staffing, and promotional spend across a large retail network requires reliable daily sales forecasts at the individual store level~\cite{hyndman2021}. Classical time-series approaches such as ARIMA~\cite{box1994} are interpretable but designed for single univariate sequences and do not incorporate the categorical and continuous features that characterise retail store behaviour. Tree-based ensemble methods have become the standard for structured tabular data~\cite{grinsztajn2022}, and the Rossmann Store Sales Kaggle competition (2015) confirmed their dominance in this domain.
+Managing inventory, staffing, and promotional spend across a large retail network requires reliable daily sales predictions at the individual store level~\cite{hyndman2021}. Classical time-series approaches such as ARIMA~\cite{box1994} are interpretable but designed for single univariate sequences and do not incorporate the categorical and continuous features that characterise retail store behaviour. Tree-based ensemble methods have become the standard for structured tabular data~\cite{grinsztajn2022}, and the Rossmann Store Sales Kaggle competition (2015) confirmed their dominance in this domain.
 
-Despite their accuracy, ensemble models create a deployment problem: store managers cannot verify or act on predictions they cannot understand. A forecast of \euro8,800 is useful; one that explains a promotional uplift of \euro1,200 offset by a \euro700 competitive penalty is operationally actionable. SHAP (SHapley Additive exPlanations)~\cite{lundberg2017}, and its TreeSHAP variant~\cite{lundberg2020}, addresses this by providing feature attributions with game-theoretic guarantees of consistency and faithfulness to the model.
+Despite their accuracy, ensemble models create a deployment problem: store managers cannot verify or act on predictions they cannot understand. A prediction of \euro8,800 is useful; one that explains a promotional uplift of \euro1,200 offset by a competitive penalty is operationally actionable. SHAP (SHapley Additive exPlanations)~\cite{lundberg2017}, and its TreeSHAP variant~\cite{lundberg2020}, addresses this by providing feature attributions with game-theoretic guarantees of consistency and local faithfulness to the model.
 
 This paper trains and compares all three models on the Rossmann dataset, applies TreeSHAP to both ensemble models, and demonstrates that store-level SHAP explanations translate directly into retail management decisions. Section~\ref{sec:related} reviews related work; Section~\ref{sec:method} describes the methodology; Section~\ref{sec:results} presents results; Section~\ref{sec:conclusion} concludes.
 
@@ -51,13 +51,9 @@ This paper trains and compares all three models on the Rossmann dataset, applies
 \label{sec:related}
 % -------------------------------------------------------
 
-\subsection{Sales Forecasting Methods}
+ARIMA and Holt-Winters smoothing~\cite{box1994} are standard univariate benchmarks but degrade when targets depend on interacting features such as promotions, competitor proximity, and store format. Random Forest~\cite{breiman2001} captures non-linear interactions through bootstrap-aggregated trees; XGBoost~\cite{chen2016} extends this with residual boosting, achieving lower bias on high-dimensional tabular data. LightGBM~\cite{ke2017} and CatBoost~\cite{prokhorenkova2018} offer further speed and categorical improvements, while LSTMs~\cite{hochreiter1997} and the Temporal Fusion Transformer~\cite{lim2021} address multi-horizon settings. Grinsztajn et al.~\cite{grinsztajn2022} and Shwartz-Ziv and Armon~\cite{shwartz2022} both showed that tree-based models consistently outperform neural methods on fixed-length tabular data, motivating the focus here.
 
-ARIMA and Holt-Winters smoothing~\cite{box1994} are standard univariate benchmarks but degrade when targets depend on interacting features such as promotions, competitor proximity, and store format. Random Forest~\cite{breiman2001} captures non-linear interactions through bootstrap-aggregated trees. XGBoost~\cite{chen2016} extends this by training each tree on residuals of the current ensemble, achieving lower bias on high-dimensional tabular data. LightGBM~\cite{ke2017} and CatBoost~\cite{prokhorenkova2018} offer further speed and categorical improvements. Deep learning approaches — LSTMs~\cite{hochreiter1997} and the Temporal Fusion Transformer~\cite{lim2021} — show promise for multi-horizon forecasting, but Grinsztajn et al.~\cite{grinsztajn2022} and Shwartz-Ziv and Armon~\cite{shwartz2022} both showed that tree-based models consistently outperform neural methods on fixed-length tabular data, motivating the focus here.
-
-\subsection{Explainability: SHAP and LIME}
-
-LIME~\cite{ribeiro2016} approximates local model behaviour with a linear surrogate but is unstable across runs due to sampling randomness. SHAP~\cite{lundberg2017} distributes predictions across features via Shapley values from cooperative game theory, guaranteeing that contributions sum exactly to the prediction minus the baseline — a property LIME does not satisfy. TreeSHAP~\cite{lundberg2020} computes exact Shapley values for tree ensembles in polynomial time, making it practical on large models. Ribeiro et al.~\cite{ribeiro2016} showed that local explanations measurably increase stakeholder trust, and Dzyabura and Hauser~\cite{dzyabura2019} demonstrated that interpretable demand models improve promotional decision-making — motivating the use of SHAP as a manager-facing output in this work.
+LIME~\cite{ribeiro2016} approximates local model behaviour with a linear surrogate but is unstable across runs due to sampling randomness. SHAP~\cite{lundberg2017} distributes predictions across features via Shapley values from cooperative game theory, guaranteeing that contributions sum exactly to the prediction minus the baseline. TreeSHAP~\cite{lundberg2020} computes exact Shapley values for tree ensembles in polynomial time. Ribeiro et al.~\cite{ribeiro2016} showed that local explanations measurably increase stakeholder trust, and Dzyabura and Hauser~\cite{dzyabura2019} demonstrated that interpretable demand models improve promotional decision-making.
 
 % -------------------------------------------------------
 \section{Methodology and Experimental Setup}
@@ -72,9 +68,7 @@ Missing values were handled domain-specifically: \texttt{CompetitionDistance} (0
 
 \subsection{Models and Evaluation}
 
-Three models spanning increasing complexity were evaluated. \textbf{Linear Regression} is the interpretable baseline, assuming additive linear feature effects. \textbf{Random Forest}~\cite{breiman2001} trains 100 trees via bootstrap bagging (max depth~15, min leaf~5). \textbf{XGBoost}~\cite{chen2016} trains 500 trees sequentially (learning rate~0.05, max depth~6, L1~=~0.1, L2~=~1.0, subsample~0.80) with early stopping on validation RMSE.
-
-All models were evaluated using MAE, RMSE, $R^{2}$, and MAPE on the held-out validation set. TreeSHAP~\cite{lundberg2020} was then applied to both ensemble models on 600 randomly sampled validation records, producing beeswarm plots, importance rankings, a waterfall explanation, and a dependence plot for \texttt{CompetitionDistance}.
+Three models spanning increasing complexity were evaluated. \textbf{Linear Regression} is the interpretable baseline, assuming additive linear feature effects. \textbf{Random Forest}~\cite{breiman2001} trains 100 trees via bootstrap bagging (max depth~15, min leaf~5). \textbf{XGBoost}~\cite{chen2016} trains 500 trees sequentially (learning rate~0.05, max depth~6, L1~=~0.1, L2~=~1.0, subsample~0.80) with early stopping on validation RMSE. All models were evaluated using MAE, RMSE, $R^{2}$, and MAPE on the held-out set. TreeSHAP~\cite{lundberg2020} was applied to both ensemble models on 600 randomly sampled validation records, producing beeswarm plots, importance rankings, a dependence plot, and a waterfall explanation.
 
 % -------------------------------------------------------
 \section{Results and Discussion}
@@ -83,7 +77,7 @@ All models were evaluated using MAE, RMSE, $R^{2}$, and MAPE on the held-out val
 
 \subsection{Model Performance}
 
-Table~\ref{tab:performance} summarises validation performance across all three models.
+Table~\ref{tab:performance} and Fig.~\ref{fig:comparison} summarise validation performance. Linear Regression's $R^{2}$ of 0.20 reflects its inability to model non-linear interactions between promotions, store type, and competition — the primary drivers of retail sales variance. Its MAPE of 33.66\% means predictions deviate by roughly one-third of actual sales. Random Forest raises $R^{2}$ to 0.77 by learning these interactions through deep trees. XGBoost achieves the best result on all four metrics, reducing MAE by 17.4\% over Random Forest and 57.6\% over Linear Regression; sequential boosting and L1/L2 regularisation jointly explain its advantage.
 
 \begin{table}[t]
 \centering
@@ -101,11 +95,16 @@ Random Forest     & 1,034.71 & 1,483.27 & 0.7720 & 16.54 \\
 \end{tabular}
 \end{table}
 
-Linear Regression's $R^{2}$ of 0.20 reflects its inability to model non-linear interactions between promotions, store type, and competition — the primary drivers of retail sales variance. Its MAPE of 33.66\% means predictions deviate by roughly one-third of actual sales. Random Forest raises $R^{2}$ to 0.77 by learning these interactions through deep trees, with zero-centred residuals indicating good calibration. XGBoost achieves the best result on all four metrics, reducing MAE by 17.4\% over Random Forest and 57.6\% over Linear Regression. Its sequential boosting progressively targets the hardest samples; L1/L2 regularisation prevents overfitting. A mild right skew in residuals above \euro20,000 reflects rare extreme-sales events driven by unobserved local factors.
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\columnwidth]{model_comparison.png}
+    \caption{Validation-set performance across all four metrics. XGBoost dominates on every criterion; Random Forest is a clear second; Linear Regression cannot capture non-linear interactions.}
+    \label{fig:comparison}
+\end{figure}
 
 \subsection{SHAP Feature Importance}
 
-Table~\ref{tab:shap} reports mean absolute SHAP values for the top eight features; Fig.~\ref{fig:beeswarm} shows the beeswarm summary plot. Values in Table~\ref{tab:shap} are normalised importance proportions (each feature's mean $|\text{SHAP}|$ divided by the sum across all features), not EUR amounts. EUR-scale effects cited below are read from the dependence plots and the waterfall example.
+Table~\ref{tab:shap} reports mean absolute SHAP values for the top eight features; Fig.~\ref{fig:beeswarm} shows the beeswarm summary plot. Values in Table~\ref{tab:shap} are normalised importance proportions (each feature's mean $|\text{SHAP}|$ divided by the sum across all features), not EUR amounts. EUR-scale contributions are derived from the dependence plot (Fig.~\ref{fig:dependence}) and the waterfall example (Fig.~\ref{fig:waterfall}).
 
 \begin{table}[t]
 \centering
@@ -135,29 +134,38 @@ Table~\ref{tab:shap} reports mean absolute SHAP values for the top eight feature
     \label{fig:beeswarm}
 \end{figure}
 
-\texttt{CompetitionDistance} is the dominant predictor. Stores within 500~m of a competitor incur a SHAP penalty of approximately $-$\euro800/day; those with no nearby competitor gain roughly $+$\euro600/day — a non-linear relationship that flattens beyond 3~km. \texttt{Promo} averages $+$\euro387 on active promotional days versus $-$\euro280 otherwise, an estimated net uplift of \euro667/store/day; chain-wide, one additional promotional day represents approximately \euro744,000 in incremental revenue (under average-effect assumptions). Store identity (0.167) captures persistent local effects — demographics, foot traffic, customer loyalty — indicating that chain-level aggregate forecasts systematically underperform store-specific models. \texttt{DayOfWeek} (0.066) reflects the weekly cycle, with Saturdays receiving the highest attributions.
+\texttt{CompetitionDistance} is the highest-ranked feature (0.193). Fig.~\ref{fig:dependence} reveals a counterintuitive pattern: stores within 500~m of a competitor receive a mean SHAP of $+$\euro974, whereas stores beyond 15~km average $-$\euro114. Rather than penalising proximity, the model has learned that short competition distance proxies for dense commercial zones with high customer footfall — a confound that dominates the direct competitive effect in the Rossmann network. Effects are highly non-linear and flatten beyond $\sim$5~km; the interaction with assortment type (colour) explains additional variance.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\columnwidth]{shap_dependence_cd.png}
+    \caption{SHAP dependence plot for \texttt{CompetitionDistance} (XGBoost, $n=600$), coloured by assortment type. Mean SHAP is $+$\euro974 for distances below 500~m and $-$\euro114 beyond 15~km, with a steep non-linear transition.}
+    \label{fig:dependence}
+\end{figure}
+
+\texttt{Promo} (0.182) is the most directly controllable driver: active promotional days average a mean SHAP of $+$\euro1{,}189, versus $-$\euro907 on non-promotional days. Store identity (0.167) captures persistent local effects — demographics, foot traffic, customer loyalty — indicating that chain-level aggregate predictions systematically underperform store-specific models. \texttt{DayOfWeek} (0.066) reflects the weekly sales cycle, with weekend attributions leading weekdays in the beeswarm plot.
 
 \subsection{Store-Level Prediction Explanation}
 
-Fig.~\ref{fig:waterfall} shows the SHAP waterfall plot for Store~161, a validation sample from Week~16 of 2013 (mid-April, Day~15) with \emph{no} active standard promotion (\texttt{Promo}~=~0). Starting from the dataset mean $E[f(X)]$~=~\euro6,955, the absence of a promotion is by far the dominant factor: the model assigns $-$\euro1,248 to this store-day, reflecting how strongly the chain's promotional calendar drives individual store sales. A Monday (\texttt{DayOfWeek}~=~1) adds $+$\euro467, but not being at the start of the month subtracts $-$\euro467. The competitor at 2,970~m reduces the prediction by $-$\euro392, while the store's assortment type partially recovers $+$\euro332. The remaining features — loyalty scheme timing, day of month, year, and weekly cycle — each contribute smaller amounts. The sum of all contributions yields a final prediction of $f(x)$~=~\euro5,551.
+Fig.~\ref{fig:waterfall} shows the SHAP waterfall plot for Store~161, a validation sample from Week~16 of 2013 (mid-April, Day~15) with \emph{no} active standard promotion (\texttt{Promo}~=~0). Starting from the dataset mean $E[f(X)]$~=~\euro6,955, the absence of a promotion is by far the dominant factor: the model assigns $-$\euro1,248 to this store-day, consistent with the global Promo SHAP distribution. A Monday (\texttt{DayOfWeek}~=~1) adds $+$\euro467, but not being at the start of the month subtracts $-$\euro467. The competitor at 2,970~m reduces the prediction by $-$\euro392, while the store's assortment type recovers $+$\euro332. The sum of all contributions yields a final prediction of $f(x)$~=~\euro5,551.
 
 \begin{figure}[t]
     \centering
     \includegraphics[width=\columnwidth]{shap_waterfall.png}
-    \caption{SHAP waterfall plot — Store~161, Week~16 of 2013 (no active promotion, Day~15). All contributions are in EUR. Baseline $E[f(X)]$~=~\euro6,955; prediction $f(x)$~=~\euro5,551. The absence of a standard promotion is the single largest driver ($-$\euro1,248).}
+    \caption{SHAP waterfall plot — Store~161, Week~16 of 2013 (no active promotion, Day~15). All contributions in EUR. Baseline $E[f(X)]$~=~\euro6,955; prediction $f(x)$~=~\euro5,551. The absent promotion is the dominant driver ($-$\euro1,248).}
     \label{fig:waterfall}
 \end{figure}
 
-This decomposition is directly actionable. A manager can see that activating the standard promotion on this day would be expected to shift the prediction upward by approximately \euro1,248 — the model's estimated promotional lift for this specific store and date. The assortment and competitor effects are structural; the promotional decision is the immediate operational lever. All values are read from the model output, not from population averages.
+This decomposition is directly actionable: activating a standard promotion would be expected to shift the prediction by approximately $+$\euro1,248 for this specific store-day. The assortment and competitor effects are structural; the promotional decision is the immediate operational lever. All values are read from the model output, not from population averages.
 
 % -------------------------------------------------------
 \section{Conclusion}
 \label{sec:conclusion}
 % -------------------------------------------------------
 
-This study benchmarked Linear Regression, Random Forest, and XGBoost on the Rossmann dataset and applied TreeSHAP to produce auditable, store-level predictions. XGBoost achieved the strongest in-sample generalisation ($R^{2}$~=~0.8512, MAPE~=~13.78\%), and SHAP analysis identified competition proximity, promotional activity, and store identity as the primary drivers of daily sales variance. The waterfall explanation for Store~161 demonstrated that individual predictions can be decomposed into EUR-valued feature contributions that are directly actionable by a store manager. The study is an interpolation experiment on 2013--2015 data; it does not validate true out-of-sample forecasting, which is the primary direction for future work.
+This study benchmarked Linear Regression, Random Forest, and XGBoost on the Rossmann dataset and applied TreeSHAP to produce auditable, store-level predictions. XGBoost achieved the strongest in-sample generalisation ($R^{2}$~=~0.8512, MAPE~=~13.78\%), and SHAP analysis revealed that competition proximity, promotional activity, and store identity are the primary drivers of daily sales variance. Notably, \texttt{CompetitionDistance} showed a positive SHAP effect at short distances, reflecting commercial-zone density rather than a direct competitive penalty — a finding not recoverable from feature importance alone. The waterfall explanation for Store~161 demonstrated that individual predictions can be decomposed into EUR-valued contributions that are directly actionable by a store manager. The study is an interpolation experiment on 2013--2015 data and does not validate true out-of-sample forecasting.
 
-Two limitations are most consequential. First, the random 80/20 split measures generalisation within the observed time window, not forecasting ability; a temporal split (train 2013--2014, test 2015) with a separate held-out test set would give an honest forecasting evaluation. Second, unobserved external factors — weather, local events, macroeconomic conditions — contribute to residual error on extreme-sales days and are absent from the dataset. Future work should also evaluate LightGBM~\cite{ke2017} and CatBoost~\cite{prokhorenkova2018}, incorporate external data sources, apply Bayesian hyperparameter optimisation, and validate on broader benchmarks such as the M5 or Walmart Sales datasets.
+Two limitations are most consequential. First, the random 80/20 split measures generalisation within the observed time window; a temporal split (train 2013--2014, test 2015) with a separate held-out test set would give an honest forecasting evaluation. Second, unobserved external factors — weather, local events, macroeconomic conditions — contribute to residual error on extreme-sales days. Future work should evaluate LightGBM~\cite{ke2017} and CatBoost~\cite{prokhorenkova2018}, incorporate external data sources, and validate on broader benchmarks such as the M5 or Walmart Sales datasets.
 
 \subsection*{AI Disclosure}
 Portions of this manuscript were drafted with assistance from large language model tools (Claude, Anthropic). All experimental results, code, and data analysis were conducted independently by the author. The final text was reviewed, edited, and verified for accuracy by the author.
