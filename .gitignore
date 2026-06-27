@@ -1,1 +1,8 @@
 models/random_forest.pkl
+venv/
+sportsenv/
+*.dylib
+*.so
+__pycache__/
+*.pyc
+.DS_Store
